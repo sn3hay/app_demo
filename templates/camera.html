@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Page</title>
+    <style>
+        body {
+            background-color: #FFD1DC;
+            font-family: Arial, sans-serif;
+            color: #6B395F; 
+            text-align: center;
+            padding: 50px;
+        }
+        button {
+            display: inline-block;
+            background-color: #9F86BA; 
+            color: #FFFFFF;
+            padding: 10px 20px;
+            margin-top: 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 1.2em;
+        }
+        button:hover {
+            background-color: #8C75A8;
+        }
+    </style>
+</head>
+<body>
+    <video id="videoElement" autoplay playsinline width="640" height="480"></video>
+    <canvas id="overlay" width="640" height="480" style="position: absolute; top: 0; left: 0;"></canvas>
+    <button id="startVideo">Start Video</button>
+    <button id="stopVideo" onclick="stopVideo()">Stop Video</button>
+    <p id="predictedLetter">Predicted letter: </p>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const startButton = document.getElementById('startVideo');
+        let mediaStream = null;
+
+        startButton.addEventListener('click', function() {
+            if (navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(function (stream) {
+                        video.srcObject = stream;
+                        mediaStream = stream;
+                        setInterval(sendFrame, 1000);
+                    })
+                    .catch(function (error) {
+                        console.log("Something went wrong!", error);
+                    });
+            }
+        });
+
+        function stopVideo() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+        }
+
+        function sendFrame() {
+            const canvas = document.createElement('canvas');
+            const overlay = document.getElementById('overlay');
+            const overlayCtx = overlay.getContext('2d');
+        
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const data = canvas.toDataURL('image/png');
+        
+            fetch('/predict', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ image: data })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("predictedLetter").innerText = "Predicted letter: " + data.char;
+                if (data.bbox) {
+                    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+                    overlayCtx.beginPath();
+                    overlayCtx.rect(data.bbox.xmin, data.bbox.ymin, data.bbox.xmax - data.bbox.xmin, data.bbox.ymax - data.bbox.ymin);
+                    overlayCtx.strokeStyle = 'red';
+                    overlayCtx.lineWidth = 2;
+                    overlayCtx.stroke();
+
+                    
+                    overlayCtx.font = "18px Arial";
+                    overlayCtx.fillStyle = "red";
+                    overlayCtx.fillText(data.char, data.bbox.xmin, data.bbox.ymin - 10);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
+</body>
+</html>
